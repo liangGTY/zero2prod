@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use actix_web::{HttpResponse, web};
 use actix_web::web::Form;
 use chrono::Utc;
@@ -38,9 +36,9 @@ pub async fn subscribe(form: Form<FormData>, _connection: web::Data<PgPool>) -> 
         form.name,
         Utc::now()
     )
-    .execute(_connection.get_ref())
-    .instrument(query_span)
-    .await
+        .execute(_connection.get_ref())
+        .instrument(query_span)
+        .await
     {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(e) => {

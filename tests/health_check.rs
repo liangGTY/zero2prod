@@ -1,19 +1,25 @@
-use std::fmt::format;
-use std::io::Error;
 use std::net::TcpListener;
 
+use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool, Pool, Postgres};
 use uuid::Uuid;
 
-use zero2prod::configuration::{DatabaseSettings, get_configuration, Settings};
+use zero2prod::configuration::{DatabaseSettings, get_configuration};
 use zero2prod::startup::run;
+use zero2prod::telemetry::{get_subscriber, init_subscriber};
 
 struct TestApp {
     http_url: String,
     db_pool: Pool<Postgres>,
 }
 
+static TRACING: Lazy<()> = Lazy::new(|| {
+    init_subscriber(get_subscriber("test".into(), "info".into()));
+});
+
 async fn spawn_app() -> TestApp {
+    Lazy::force(&TRACING);
+
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind address");
     let port = listener.local_addr().unwrap().port();
 
@@ -73,11 +79,6 @@ async fn health_check_succeeds() {
 async fn subscribe_returns_a_200_for_valid_form_data() {
     let test_app = spawn_app().await;
 
-    let configuration = get_configuration().expect("Failed to read configuration");
-    let mut connection = PgConnection::connect(&configuration.database.connection_string())
-        .await
-        .expect("Failed to connect to database");
-
     let client = reqwest::Client::new();
     let body = "name=tom&email=tom@tom.com";
     let response = client
@@ -91,7 +92,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     assert_eq!(200, response.status().as_u16());
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions")
-        .fetch_one(&mut connection)
+        .fetch_one(&test_app.db_pool)
         .await
         .expect("Failed to fetch saved subscription");
 
