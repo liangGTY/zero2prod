@@ -1,0 +1,6 @@
+application:
+  port: 8000
+database:
+  port: 5432
+  username: "postgres"
+  database_name: "newsletter"

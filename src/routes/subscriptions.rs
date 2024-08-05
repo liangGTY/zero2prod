@@ -3,16 +3,27 @@ use actix_web::web::Form;
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::PgPool;
+use tracing::{instrument, Instrument};
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct FormData {
     name: String,
     email: String,
 }
 
-pub async fn subscriptions(form: Form<FormData>, _connection: web::Data<PgPool>) -> HttpResponse {
-    let result = sqlx::query!(
+#[tracing::instrument(
+    name = "Adding a new subscriber",
+    skip(form, pool),
+    fields(
+        subscriber_email = %form.email,
+        subscriber_name = %form.name
+    )
+)]
+pub async fn subscribe(form: Form<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
+    let query_span = tracing::info_span!("Saving new subscriber details in the database");
+
+    match sqlx::query!(
         r#"
         INSERT INTO subscriptions (id ,email, name, subscribed_at)
         VALUES ($1, $2, $3, $4)
@@ -22,13 +33,13 @@ pub async fn subscriptions(form: Form<FormData>, _connection: web::Data<PgPool>)
         form.name,
         Utc::now()
     )
-    .execute(_connection.get_ref())
-    .await;
-
-    match result {
+    .execute(pool.get_ref())
+    .instrument(query_span)
+    .await
+    {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(e) => {
-            println!("error: {}", e);
+            tracing::error!("Error saving subscriber details: {} ", e);
             HttpResponse::InternalServerError().finish()
         }
     }
